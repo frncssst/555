@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -26,3 +29,16 @@ jobs:
         with:
           name: host-spike-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+
+      # A release page gives a direct APK download link that works in a phone browser.
+      - name: Publish to the "test-build" release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk host-spike.apk
+          gh release delete test-build --yes --cleanup-tag || true
+          gh release create test-build host-spike.apk \
+            --title "Host Spike test build" \
+            --notes "Built from ${GITHUB_SHA::7}. Download host-spike.apk on the phone and install it." \
+            --prerelease
