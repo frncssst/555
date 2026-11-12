@@ -24,6 +24,13 @@ object Summary {
         var smsSentOk = 0
         var smsSentFail = 0
         var smsDelivered = 0
+        var smsIn = 0
+        var smsOut = 0
+        var mmsIn = 0
+        var mmsInComplete = 0
+        var mmsOut = 0
+        var mmsOutComplete = 0
+        var unknownLongest = 0.0
         val errors = ArrayList<String>()
 
         for (line in EventLog.readAll(ctx).lineSequence()) {
@@ -58,7 +65,17 @@ object Summary {
                 "call_ended_while_ringing" -> if (o.optString("trigger") == "decline") declineLatency.add(o.optLong("ms_from_command"))
                 "sms_sent" -> if (o.optBoolean("ok")) smsSentOk++ else smsSentFail++
                 "sms_delivered" -> if (o.optBoolean("ok")) smsDelivered++
+                "sms_stored" -> if (o.optString("direction") == "in") smsIn++ else smsOut++
+                "mms_stored" -> if (o.optString("direction") == "in") {
+                    mmsIn++
+                    if (o.optBoolean("complete")) mmsInComplete++
+                } else {
+                    mmsOut++
+                    if (o.optBoolean("complete")) mmsOutComplete++
+                }
+                "host_unknown_ended" -> unknownLongest = maxOf(unknownLongest, o.optDouble("duration_min", 0.0))
                 "permission_missing", "command_server_error", "mms_read_denied", "mms_read_error",
+                "messages_read_denied", "messages_read_error",
                 "sms_send_failed", "boot_start_failed" -> errors.add(type + " " + o.optString("error", o.optString("permission", "")))
             }
         }
@@ -79,10 +96,12 @@ object Summary {
             appendLine("Answer commands: ok $answerOk, errors $answerErr; answered after command ${answerLatency.size}, median ${median(answerLatency)}")
             appendLine("Decline commands: returned true $declineTrue, false $declineFalse, errors $declineErr; ended after command ${declineLatency.size}, median ${median(declineLatency)}")
             appendLine()
-            appendLine("SMS received ${c("sms_received")}; MMS seen ${c("mms_seen")}")
+            appendLine("SMS received (broadcast) ${c("sms_received")}")
+            appendLine("Message store, any app: SMS in $smsIn, out $smsOut; MMS in $mmsIn ($mmsInComplete with content), out $mmsOut ($mmsOutComplete with content)")
             appendLine("SMS sent: requested ${c("sms_send_requested")}, sent ok $smsSentOk, failed $smsSentFail, delivered $smsDelivered")
             appendLine()
-            appendLine("SIM changes ${c("sims_changed")}")
+            appendLine("SIM raw events ${c("sims_changed")}; host changes ${c("host_changed")}, blips ignored ${c("host_blip_ignored")}")
+            appendLine("Host unknown periods ${c("host_unknown_started")}, longest %.1f min".format(unknownLongest))
             if (errors.isNotEmpty()) {
                 appendLine()
                 appendLine("Problems (${errors.size}):")

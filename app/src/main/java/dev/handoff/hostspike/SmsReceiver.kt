@@ -21,7 +21,6 @@ class SmsReceiver : BroadcastReceiver() {
             "from" to from,
             "chars" to body.length,
             "segments" to msgs.size,
-            "preview" to body.take(40),
             "sub_id" to subId,
             "ms_since_sent" to (System.currentTimeMillis() - sentAt),
             "service_running" to HostService.running

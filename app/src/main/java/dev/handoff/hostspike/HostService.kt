@@ -1,13 +1,16 @@
 package dev.handoff.hostspike
 
 import android.Manifest
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.graphics.drawable.Icon
@@ -18,6 +21,7 @@ import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyCallback
 import android.telephony.TelephonyManager
@@ -35,6 +39,8 @@ class HostService : Service() {
         private const val CH_CALL = "call"
         private const val HEARTBEAT_MS = 15 * 60 * 1000L
         private const val LATE_GAP_MIN = 20.0
+        private const val HOST_CONFIRM_MS = 2 * 60 * 1000L
+        private const val ACTION_BEAT = "dev.handoff.hostspike.HEARTBEAT"
 
         @Volatile var running = false
         @Volatile var lastHeartbeatLabel: String = "none yet"
@@ -53,14 +59,21 @@ class HostService : Service() {
     private var server: CommandServer? = null
     private var callCallback: TelephonyCallback? = null
     private var subsListener: SubscriptionManager.OnSubscriptionsChangedListener? = null
-    private var mmsObserver: MmsObserver? = null
+    private var watcher: MessageWatcher? = null
     private var lastBeat = 0L
     private var lastSimSignature: String? = null
 
-    private val heartbeat = object : Runnable {
-        override fun run() {
-            beat()
-            handler.postDelayed(this, HEARTBEAT_MS)
+    // Host status after filtering out short blips.
+    private var stableHost: Boolean? = null
+    private var stableHostKnown = false
+    private var unknownSince = 0L
+    private val confirmHost = Runnable { confirmHostChange() }
+
+    // Heartbeat uses an alarm that Android allows during Doze, instead of an in-app timer.
+    private val beatReceiver = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) {
+            beat("alarm")
+            scheduleBeat()
         }
     }
 
@@ -86,18 +99,25 @@ class HostService : Service() {
         )
         registerCallState()
         registerSims()
-        registerMms()
+        registerMessages()
         server = CommandServer(applicationContext, Prefs.PORT, Prefs.token(this)).also { it.start() }
-        handler.post(heartbeat)
+        registerReceiver(beatReceiver, IntentFilter(ACTION_BEAT), Context.RECEIVER_NOT_EXPORTED)
+        beat("startup")
+        scheduleBeat()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        getSystemService(AlarmManager::class.java).cancel(beatIntent())
+        try {
+            unregisterReceiver(beatReceiver)
+        } catch (_: Exception) {
+        }
         callCallback?.let { getSystemService(TelephonyManager::class.java).unregisterTelephonyCallback(it) }
         subsListener?.let { getSystemService(SubscriptionManager::class.java).removeOnSubscriptionsChangedListener(it) }
-        mmsObserver?.let { contentResolver.unregisterContentObserver(it) }
+        watcher?.let { contentResolver.unregisterContentObserver(it) }
         server?.stop()
         bgThread?.quitSafely()
         running = false
@@ -212,23 +232,82 @@ class HostService : Service() {
             "is_host" to (SimInfo.isHost(this, sims) ?: "unknown"),
             "sims" to SimInfo.toJson(sims)
         )
+        evaluateHost()
         updateStatusNotification()
     }
 
-    // ---- MMS ----
+    /**
+     * The raw SIM events above include short blips (the number briefly missing, or no service).
+     * Only a change between host and not-host that lasts two minutes counts. Unknown, such as no
+     * service on a flight, keeps the current role and is logged as a period.
+     */
+    private fun evaluateHost() {
+        val now = SimInfo.isHost(this, SimInfo.snapshot(this))
+        val t = System.currentTimeMillis()
+        if (!stableHostKnown) {
+            stableHostKnown = true
+            stableHost = now
+            EventLog.log(this, "host_status", "is_host" to (now ?: "unknown"), "reason" to "startup")
+            return
+        }
+        if (now == null) {
+            if (unknownSince == 0L) {
+                unknownSince = t
+                EventLog.log(this, "host_unknown_started", "keeping_role" to (stableHost ?: "unknown"))
+            }
+            return
+        }
+        if (unknownSince != 0L) {
+            EventLog.log(this, "host_unknown_ended", "duration_min" to Math.round((t - unknownSince) / 6000.0) / 10.0)
+            unknownSince = 0L
+        }
+        if (now == stableHost) {
+            handler.removeCallbacks(confirmHost)
+            return
+        }
+        handler.removeCallbacks(confirmHost)
+        handler.postDelayed(confirmHost, HOST_CONFIRM_MS)
+    }
 
-    private fun registerMms() {
-        val t = HandlerThread("mms-observer").also { it.start() }
+    private fun confirmHostChange() {
+        val now = SimInfo.isHost(this, SimInfo.snapshot(this))
+        if (now == null || now == stableHost) {
+            EventLog.log(this, "host_blip_ignored", "is_host_now" to (now ?: "unknown"))
+            return
+        }
+        EventLog.log(this, "host_changed", "from" to (stableHost ?: "unknown"), "to" to now)
+        stableHost = now
+    }
+
+    // ---- Messages ----
+
+    private fun registerMessages() {
+        val t = HandlerThread("message-watcher").also { it.start() }
         bgThread = t
-        val obs = MmsObserver(applicationContext, Handler(t.looper))
-        Handler(t.looper).post { obs.prime() }
-        contentResolver.registerContentObserver(Uri.parse("content://mms"), true, obs)
-        mmsObserver = obs
+        val w = MessageWatcher(applicationContext, Handler(t.looper))
+        Handler(t.looper).post { w.prime() }
+        for (uri in listOf("content://sms", "content://mms", "content://mms-sms/")) {
+            contentResolver.registerContentObserver(Uri.parse(uri), true, w)
+        }
+        watcher = w
     }
 
     // ---- Heartbeat ----
 
-    private fun beat() {
+    private fun beatIntent(): PendingIntent = PendingIntent.getBroadcast(
+        this, 10, Intent(ACTION_BEAT).setPackage(packageName),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+    )
+
+    private fun scheduleBeat() {
+        getSystemService(AlarmManager::class.java).setAndAllowWhileIdle(
+            AlarmManager.ELAPSED_REALTIME_WAKEUP,
+            SystemClock.elapsedRealtime() + HEARTBEAT_MS,
+            beatIntent()
+        )
+    }
+
+    private fun beat(source: String) {
         val now = System.currentTimeMillis()
         val gapMin = if (lastBeat == 0L) 0.0 else (now - lastBeat) / 60000.0
         lastBeat = now
@@ -242,9 +321,12 @@ class HostService : Service() {
             "battery_pct" to pct,
             "charging" to charging,
             "doze" to pm.isDeviceIdleMode,
-            "battery_opt_exempt" to pm.isIgnoringBatteryOptimizations(packageName)
+            "battery_opt_exempt" to pm.isIgnoringBatteryOptimizations(packageName),
+            "power_saver" to pm.isPowerSaveMode,
+            "source" to source
         )
         checkSims("heartbeat")
+        watcher?.requestScan("heartbeat")
         updateStatusNotification()
     }
 

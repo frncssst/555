@@ -92,6 +92,16 @@ Needs a second phone to call from, and ideally a third device on the same Wi-Fi.
 | Battery change over the run | Compare with a normal day |
 | Reboot once: `boot_completed` then `service_started` | Survives reboots |
 
+## Version 0.2 changes (after the first 17-hour run)
+
+- **All messages, any app:** the app now reads the phone's message store for texts and picture messages in both directions, including ones you send from Google Messages (`sms_stored`, `mms_stored`).
+- **Picture messages:** the store is also checked on every heartbeat, because change notifications missed an MMS in 0.1, and an MMS with no content yet is re-read after 3, 10, 30 and 120 seconds.
+- **SIM blips:** raw SIM events are still logged, but the host role only changes if the change lasts two minutes (`host_changed`). No service, such as on a flight, keeps the role and is logged as an unknown period.
+- **Heartbeat:** uses an alarm Android allows during Doze instead of an in-app timer, and logs whether Battery Saver was on.
+- **Privacy:** message text is no longer logged.
+
+Re-test after installing 0.2: receive one MMS, send one text and one MMS from Google Messages, reboot the phone without opening the app, and send one Answer or Decline from another device on the same Wi-Fi.
+
 ## Known unknowns this app is designed to expose
 
 - The answer and decline methods are deprecated. They may silently do nothing, return false, or throw on current Android when the app is not the default phone app. Every attempt is logged with its outcome either way.
@@ -101,7 +111,7 @@ Needs a second phone to call from, and ideally a third device on the same Wi-Fi.
 
 ## Privacy
 
-The log contains phone numbers and the first 40 characters of messages. It stays in the app's private storage unless you save or copy it. Clear it when the tests are done. The web page only works on your local network and needs the token.
+From version 0.2 the log contains phone numbers and message lengths, but no message text. Logs saved from version 0.1 still contain the first 40 characters of each incoming text. It stays in the app's private storage unless you save or copy it. Clear it when the tests are done. The web page only works on your local network and needs the token.
 
 ## What to send back
 
