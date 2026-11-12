@@ -11,11 +11,25 @@ android {
         applicationId = "dev.handoff.hostspike"
         minSdk = 33
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2"
+        versionCode = 3
+        versionName = "0.3"
+    }
+
+    // A fixed debug key, so each new build installs over the previous one instead of
+    // needing an uninstall (which also wipes the log and the SMS permission).
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = false
         }
