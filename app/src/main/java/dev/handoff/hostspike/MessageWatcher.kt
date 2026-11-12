@@ -30,6 +30,7 @@ class MessageWatcher(private val ctx: Context, private val handler: Handler) : C
     }
 
     override fun onChange(selfChange: Boolean) {
+        SelfStats.count("message_store_change")
         scan("observer")
     }
 

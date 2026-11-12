@@ -32,6 +32,11 @@ object Summary {
         var mmsOutComplete = 0
         var unknownLongest = 0.0
         var listenerNumbers = 0
+        // Footprint over the latest service session (process counters reset on restart).
+        var sessCpuFirst = -1L; var sessCpuLast = -1L
+        var sessNetFirst = -1L; var sessNetLast = -1L
+        var sessFirstT = 0L; var sessLastT = 0L
+        var sessWakeups: JSONObject? = null
         val errors = ArrayList<String>()
 
         for (line in EventLog.readAll(ctx).lineSequence()) {
@@ -47,7 +52,15 @@ object Summary {
             last = t
             counts[type] = (counts[type] ?: 0) + 1
             when (type) {
+                "service_started" -> { sessCpuFirst = -1L; sessNetFirst = -1L; sessWakeups = null }
                 "heartbeat" -> {
+                    if (o.has("self_cpu_ms_total")) {
+                        val cpu = o.optLong("self_cpu_ms_total")
+                        val net = o.optLong("self_net_bytes_total", -1)
+                        if (sessCpuFirst < 0) { sessCpuFirst = cpu; sessNetFirst = net; sessFirstT = t }
+                        sessCpuLast = cpu; sessNetLast = net; sessLastT = t
+                        sessWakeups = o.optJSONObject("self_wakeups_total")
+                    }
                     heartbeats++
                     if (o.optBoolean("late")) lateBeats++
                     val g = o.optDouble("gap_min", 0.0)
@@ -102,6 +115,17 @@ object Summary {
             appendLine("Message store, any app: SMS in $smsIn, out $smsOut; MMS in $mmsIn ($mmsInComplete with content), out $mmsOut ($mmsOutComplete with content)")
             appendLine("SMS sent: requested ${c("sms_send_requested")}, sent ok $smsSentOk, failed $smsSentFail, delivered $smsDelivered")
             appendLine()
+            if (sessCpuFirst >= 0 && sessLastT > sessFirstT) {
+                val h = (sessLastT - sessFirstT) / 3_600_000.0
+                appendLine("App footprint, current session %.1f h: CPU %.1f s/h, data %.0f KB/h".format(
+                    h, (sessCpuLast - sessCpuFirst) / 1000.0 / h,
+                    if (sessNetFirst >= 0) (sessNetLast - sessNetFirst) / 1024.0 / h else -1.0))
+                sessWakeups?.let { w ->
+                    val parts = w.keys().asSequence().map { k -> "$k ${w.optLong(k)}" }.joinToString(", ")
+                    appendLine("Wake-ups this session: $parts")
+                }
+                appendLine()
+            }
             appendLine("SIM raw events ${c("sims_changed")}; host changes ${c("host_changed")}, blips ignored ${c("host_blip_ignored")}")
             appendLine("Host unknown periods ${c("host_unknown_started")}, longest %.1f min".format(unknownLongest))
             if (errors.isNotEmpty()) {

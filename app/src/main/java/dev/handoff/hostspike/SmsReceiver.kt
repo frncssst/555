@@ -12,6 +12,7 @@ class SmsReceiver : BroadcastReceiver() {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
         val msgs = Telephony.Sms.Intents.getMessagesFromIntent(intent)
         if (msgs.isNullOrEmpty()) return
+        SelfStats.count("sms_broadcast")
         val from = msgs[0].originatingAddress
         val body = msgs.joinToString("") { it.messageBody ?: "" }
         val sentAt = msgs[0].timestampMillis

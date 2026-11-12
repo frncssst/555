@@ -107,6 +107,10 @@ Re-test after installing 0.2: receive one MMS, send one text and one MMS from Go
 - **Caller number for contacts:** Android never shows calls from saved contacts to a call screening app, so 0.4 asks for call-log access and reads the incoming number from the phone-state listener (`call_number_from_call_log_access`). Grant the new permission when the app asks.
 - **Quieter log:** browser connections that never send a request are no longer logged as errors.
 
+## Version 0.4.1 changes
+
+- **Own battery footprint (PRD F16):** each heartbeat logs the app's own CPU time, data used and wake-ups by cause (`self_*` fields), and the summary shows CPU seconds and data per hour for the current session. Counters are in-memory and read only at heartbeats, so measuring costs almost nothing. The app holds no wake locks of its own.
+
 ## Known unknowns this app is designed to expose
 
 - The answer and decline methods are deprecated. They may silently do nothing, return false, or throw on current Android when the app is not the default phone app. Every attempt is logged with its outcome either way.

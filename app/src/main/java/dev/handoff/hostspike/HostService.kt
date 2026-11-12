@@ -74,6 +74,7 @@ class HostService : Service() {
     // Heartbeat uses an alarm that Android allows during Doze, instead of an in-app timer.
     private val beatReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
+            SelfStats.count("heartbeat_alarm")
             beat("alarm")
             scheduleBeat()
         }
@@ -192,6 +193,7 @@ class HostService : Service() {
     private fun onCallState(state: Int) {
         val prev = CallState.state
         if (state == prev) return
+        SelfStats.count("call_state")
         CallState.state = state
         val now = System.currentTimeMillis()
         when (state) {
@@ -369,7 +371,8 @@ class HostService : Service() {
             "doze" to pm.isDeviceIdleMode,
             "battery_opt_exempt" to pm.isIgnoringBatteryOptimizations(packageName),
             "power_saver" to pm.isPowerSaveMode,
-            "source" to source
+            "source" to source,
+            *SelfStats.snapshot()
         )
         checkSims("heartbeat")
         watcher?.requestScan("heartbeat")

@@ -66,6 +66,7 @@ class CommandServer(private val ctx: Context, private val port: Int, private val
                     val header = reader.readLine() ?: break
                     if (header.isEmpty()) break
                 }
+                SelfStats.count("lan_request")
                 val parts = requestLine.split(" ")
                 if (parts.size < 2) return
                 val uri = Uri.parse("http://phone" + parts[1])
