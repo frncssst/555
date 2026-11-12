@@ -11,8 +11,8 @@ android {
         applicationId = "dev.handoff.hostspike"
         minSdk = 33
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.3"
+        versionCode = 4
+        versionName = "0.4"
     }
 
     // A fixed debug key, so each new build installs over the previous one instead of

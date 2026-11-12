@@ -102,6 +102,11 @@ Needs a second phone to call from, and ideally a third device on the same Wi-Fi.
 
 Re-test after installing 0.2: receive one MMS, send one text and one MMS from Google Messages, reboot the phone without opening the app, and send one Answer or Decline from another device on the same Wi-Fi.
 
+## Version 0.4 changes
+
+- **Caller number for contacts:** Android never shows calls from saved contacts to a call screening app, so 0.4 asks for call-log access and reads the incoming number from the phone-state listener (`call_number_from_call_log_access`). Grant the new permission when the app asks.
+- **Quieter log:** browser connections that never send a request are no longer logged as errors.
+
 ## Known unknowns this app is designed to expose
 
 - The answer and decline methods are deprecated. They may silently do nothing, return false, or throw on current Android when the app is not the default phone app. Every attempt is logged with its outcome either way.

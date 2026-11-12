@@ -31,6 +31,7 @@ object Summary {
         var mmsOut = 0
         var mmsOutComplete = 0
         var unknownLongest = 0.0
+        var listenerNumbers = 0
         val errors = ArrayList<String>()
 
         for (line in EventLog.readAll(ctx).lineSequence()) {
@@ -73,6 +74,7 @@ object Summary {
                     mmsOut++
                     if (o.optBoolean("complete")) mmsOutComplete++
                 }
+                "call_number_from_call_log_access" -> if (o.optString("number") != "empty") listenerNumbers++
                 "host_unknown_ended" -> unknownLongest = maxOf(unknownLongest, o.optDouble("duration_min", 0.0))
                 "permission_missing", "command_server_error", "mms_read_denied", "mms_read_error",
                 "messages_read_denied", "messages_read_error",
@@ -92,7 +94,7 @@ object Summary {
             appendLine("Heartbeats $heartbeats, late $lateBeats, longest gap %.1f min".format(maxGap))
             if (batteryFirst >= 0) appendLine("Battery $batteryFirst% to $batteryLast% (check charging in the log)")
             appendLine()
-            appendLine("Calls ringing ${c("call_ringing")}, caller number seen by screening ${c("call_screened")}")
+            appendLine("Calls ringing ${c("call_ringing")}; caller number seen by screening ${c("call_screened")}, by call-log access $listenerNumbers of ${c("call_number_from_call_log_access")}")
             appendLine("Answer commands: ok $answerOk, errors $answerErr; answered after command ${answerLatency.size}, median ${median(answerLatency)}")
             appendLine("Decline commands: returned true $declineTrue, false $declineFalse, errors $declineErr; ended after command ${declineLatency.size}, median ${median(declineLatency)}")
             appendLine()

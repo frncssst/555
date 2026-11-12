@@ -11,6 +11,10 @@ object CallState {
     @Volatile var screenedNumber: String? = null
     @Volatile var screenedAt: Long = 0
 
+    /** Number from the phone-state listener, available for every call when call-log access is granted. */
+    @Volatile var listenerNumber: String? = null
+    @Volatile var listenerAt: Long = 0
+
     /** Last command the app issued, so the log can tell app-triggered outcomes from manual ones. */
     @Volatile var commandType: String? = null
     @Volatile var commandAt: Long = 0

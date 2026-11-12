@@ -5,6 +5,9 @@
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+    <!-- Lets the app see the incoming number for every call, including saved contacts,
+         which call screening never sees. -->
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
 
     <!-- Messages -->
     <uses-permission android:name="android.permission.RECEIVE_SMS" />

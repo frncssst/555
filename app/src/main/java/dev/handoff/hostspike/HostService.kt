@@ -22,6 +22,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
+import android.telephony.PhoneStateListener
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyCallback
 import android.telephony.TelephonyManager
@@ -58,6 +59,7 @@ class HostService : Service() {
     private var bgThread: HandlerThread? = null
     private var server: CommandServer? = null
     private var callCallback: TelephonyCallback? = null
+    private var numberListener: PhoneStateListener? = null
     private var subsListener: SubscriptionManager.OnSubscriptionsChangedListener? = null
     private var watcher: MessageWatcher? = null
     private var lastBeat = 0L
@@ -116,6 +118,8 @@ class HostService : Service() {
         } catch (_: Exception) {
         }
         callCallback?.let { getSystemService(TelephonyManager::class.java).unregisterTelephonyCallback(it) }
+        @Suppress("DEPRECATION")
+        numberListener?.let { getSystemService(TelephonyManager::class.java).listen(it, PhoneStateListener.LISTEN_NONE) }
         subsListener?.let { getSystemService(SubscriptionManager::class.java).removeOnSubscriptionsChangedListener(it) }
         watcher?.let { contentResolver.unregisterContentObserver(it) }
         server?.stop()
@@ -141,6 +145,48 @@ class HostService : Service() {
         }
         getSystemService(TelephonyManager::class.java).registerTelephonyCallback(mainExecutor, cb)
         callCallback = cb
+        registerNumberListener()
+    }
+
+    /**
+     * The modern call-state callback never includes the caller's number. The older listener does,
+     * for every call including saved contacts, but only with call-log access. It is deprecated, so
+     * this measures whether it still works on current Android.
+     */
+    @Suppress("DEPRECATION")
+    private fun registerNumberListener() {
+        if (!has(Manifest.permission.READ_CALL_LOG)) {
+            EventLog.log(this, "permission_missing", "permission" to "READ_CALL_LOG", "effect" to "caller number only for non-contacts")
+            return
+        }
+        val l = object : PhoneStateListener(mainExecutor) {
+            @Deprecated("Deprecated in Java")
+            override fun onCallStateChanged(state: Int, phoneNumber: String?) {
+                if (state != TelephonyManager.CALL_STATE_RINGING) return
+                val now = System.currentTimeMillis()
+                CallState.listenerNumber = phoneNumber?.takeIf { it.isNotBlank() }
+                CallState.listenerAt = now
+                EventLog.log(
+                    this@HostService, "call_number_from_call_log_access",
+                    "number" to (CallState.listenerNumber ?: "empty"),
+                    "screening_saw_it" to (now - CallState.screenedAt < 15_000)
+                )
+                if (CallState.state == TelephonyManager.CALL_STATE_RINGING) {
+                    showCallNotification(CallState.listenerNumber ?: currentScreenedNumber())
+                }
+            }
+        }
+        getSystemService(TelephonyManager::class.java).listen(l, PhoneStateListener.LISTEN_CALL_STATE)
+        numberListener = l
+    }
+
+    private fun currentScreenedNumber(): String? =
+        CallState.screenedNumber.takeIf { System.currentTimeMillis() - CallState.screenedAt < 15_000 }
+
+    private fun bestCallerNumber(): String? {
+        val now = System.currentTimeMillis()
+        return currentScreenedNumber()
+            ?: CallState.listenerNumber.takeIf { now - CallState.listenerAt < 15_000 }
     }
 
     private fun onCallState(state: Int) {
@@ -151,8 +197,8 @@ class HostService : Service() {
         when (state) {
             TelephonyManager.CALL_STATE_RINGING -> {
                 CallState.ringingAt = now
-                val number = CallState.screenedNumber.takeIf { now - CallState.screenedAt < 15_000 }
-                EventLog.log(this, "call_ringing", "number" to (number ?: "unknown (screening not invoked)"))
+                val number = bestCallerNumber()
+                EventLog.log(this, "call_ringing", "number" to (number ?: "unknown so far (call-log number may follow)"))
                 showCallNotification(number)
                 scheduleAutoAction()
             }

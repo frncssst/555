@@ -9,6 +9,7 @@ import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.SocketTimeoutException
 
 /**
  * A tiny web server on the main phone. Opening it in a browser on another device on the same Wi-Fi
@@ -55,7 +56,12 @@ class CommandServer(private val ctx: Context, private val port: Int, private val
             try {
                 sock.soTimeout = 5000
                 val reader = BufferedReader(InputStreamReader(sock.getInputStream()))
-                val requestLine = reader.readLine() ?: return
+                // Browsers open spare connections that never send a request; ignore those quietly.
+                val requestLine = try {
+                    reader.readLine()
+                } catch (e: SocketTimeoutException) {
+                    null
+                } ?: return
                 while (true) {
                     val header = reader.readLine() ?: break
                     if (header.isEmpty()) break

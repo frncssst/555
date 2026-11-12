@@ -39,6 +39,7 @@ class MainActivity : Activity() {
         Manifest.permission.READ_PHONE_STATE,
         Manifest.permission.READ_PHONE_NUMBERS,
         Manifest.permission.ANSWER_PHONE_CALLS,
+        Manifest.permission.READ_CALL_LOG,
         Manifest.permission.RECEIVE_SMS,
         Manifest.permission.READ_SMS,
         Manifest.permission.SEND_SMS,
