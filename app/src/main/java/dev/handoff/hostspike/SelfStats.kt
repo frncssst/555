@@ -24,6 +24,19 @@ object SelfStats {
         wakeups.getOrPut(cause) { AtomicLong() }.incrementAndGet()
     }
 
+    /** Totals only, without moving the heartbeat baseline. */
+    fun totals(): Array<Pair<String, Any?>> {
+        val rx = TrafficStats.getUidRxBytes(Process.myUid())
+        val tx = TrafficStats.getUidTxBytes(Process.myUid())
+        val counts = JSONObject()
+        for ((k, v) in wakeups.toSortedMap()) counts.put(k, v.get())
+        return arrayOf(
+            "self_cpu_ms_total" to Process.getElapsedCpuTime(),
+            "self_net_bytes_total" to if (rx < 0 || tx < 0) -1L else rx + tx,
+            "self_wakeups_total" to counts
+        )
+    }
+
     /** Totals since this process started, plus the change since the previous snapshot. */
     @Synchronized
     fun snapshot(): Array<Pair<String, Any?>> {

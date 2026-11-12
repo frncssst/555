@@ -111,6 +111,13 @@ Re-test after installing 0.2: receive one MMS, send one text and one MMS from Go
 
 - **Own battery footprint (PRD F16):** each heartbeat logs the app's own CPU time, data used and wake-ups by cause (`self_*` fields), and the summary shows CPU seconds and data per hour for the current session. Counters are in-memory and read only at heartbeats, so measuring costs almost nothing. The app holds no wake locks of its own.
 
+## Version 0.4.2 changes
+
+- **Plain-English report:** the Results screen and saved summary now read as sentences, grouped into Battery, Staying running, Calls, Messages, and SIM.
+- **Battery report:** last unplugged time and level, drain per hour since then, the whole phone's mAh used (from the battery's charge counter), the app's own processor time, data and wake-ups, and an estimate of the app's battery use per hour and per day, with the method shown.
+- **More readings per heartbeat:** battery charge, current, voltage, temperature and charge cycles; screen on or off, network type, signal level, Android's background rating for the app, memory use, and why Android last ended the app.
+- **Plug and unplug events** are logged as they happen.
+
 ## Known unknowns this app is designed to expose
 
 - The answer and decline methods are deprecated. They may silently do nothing, return false, or throw on current Android when the app is not the default phone app. Every attempt is logged with its outcome either way.

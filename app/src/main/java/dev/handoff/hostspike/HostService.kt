@@ -82,6 +82,15 @@ class HostService : Service() {
 
     private val autoAction = Runnable { runAutoAction() }
 
+    // Plug and unplug events, for "last unplugged" and drain since unplugging.
+    private val powerReceiver = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) {
+            SelfStats.count("power_event")
+            val type = if (i.action == Intent.ACTION_POWER_CONNECTED) "power_connected" else "power_disconnected"
+            EventLog.log(this@HostService, type, *DeviceStats.battery(this@HostService), *SelfStats.totals())
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -98,13 +107,23 @@ class HostService : Service() {
             this, "service_started",
             "android" to Build.VERSION.RELEASE,
             "sdk" to Build.VERSION.SDK_INT,
-            "device" to "${Build.MANUFACTURER} ${Build.MODEL}"
+            "device" to "${Build.MANUFACTURER} ${Build.MODEL}",
+            "app_version" to try { packageManager.getPackageInfo(packageName, 0).versionName } catch (_: Exception) { null },
+            "recent_process_exits" to DeviceStats.recentExits(this)
         )
         registerCallState()
         registerSims()
         registerMessages()
         server = CommandServer(applicationContext, Prefs.PORT, Prefs.token(this)).also { it.start() }
         registerReceiver(beatReceiver, IntentFilter(ACTION_BEAT), Context.RECEIVER_NOT_EXPORTED)
+        registerReceiver(
+            powerReceiver,
+            IntentFilter().apply {
+                addAction(Intent.ACTION_POWER_CONNECTED)
+                addAction(Intent.ACTION_POWER_DISCONNECTED)
+            },
+            Context.RECEIVER_NOT_EXPORTED
+        )
         beat("startup")
         scheduleBeat()
     }
@@ -116,6 +135,10 @@ class HostService : Service() {
         getSystemService(AlarmManager::class.java).cancel(beatIntent())
         try {
             unregisterReceiver(beatReceiver)
+        } catch (_: Exception) {
+        }
+        try {
+            unregisterReceiver(powerReceiver)
         } catch (_: Exception) {
         }
         callCallback?.let { getSystemService(TelephonyManager::class.java).unregisterTelephonyCallback(it) }
@@ -372,6 +395,8 @@ class HostService : Service() {
             "battery_opt_exempt" to pm.isIgnoringBatteryOptimizations(packageName),
             "power_saver" to pm.isPowerSaveMode,
             "source" to source,
+            *DeviceStats.battery(this),
+            *DeviceStats.phone(this),
             *SelfStats.snapshot()
         )
         checkSims("heartbeat")
