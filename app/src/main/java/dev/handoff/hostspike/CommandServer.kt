@@ -3,6 +3,7 @@ package dev.handoff.hostspike
 import android.content.Context
 import android.net.Uri
 import org.json.JSONObject
+import java.io.BufferedInputStream
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStream
@@ -18,6 +19,7 @@ import java.net.SocketTimeoutException
  */
 class CommandServer(private val ctx: Context, private val port: Int, private val token: String) {
     @Volatile private var socket: ServerSocket? = null
+    @Volatile private var httpsAttempts = 0
 
     fun start() {
         Thread({ acceptLoop() }, "command-server").apply {
@@ -54,17 +56,41 @@ class CommandServer(private val ctx: Context, private val port: Int, private val
     private fun handle(client: Socket) {
         client.use { sock ->
             try {
+                // Browsers open spare connections early and may send the request on one up to a
+                // minute later, so wait 60 seconds for the first byte before giving up.
+                sock.soTimeout = 60_000
+                val input = BufferedInputStream(sock.getInputStream())
+                input.mark(1)
+                val firstByte = try {
+                    input.read()
+                } catch (e: SocketTimeoutException) {
+                    -1
+                }
+                if (firstByte < 0) return
+                input.reset()
+                // 0x16 starts a secure (HTTPS) handshake. This test page only speaks plain HTTP.
+                if (firstByte == 0x16) {
+                    httpsAttempts++
+                    if (httpsAttempts == 1 || httpsAttempts % 20 == 0) {
+                        EventLog.log(ctx, "https_attempt", "count" to httpsAttempts,
+                            "hint" to "The browser tried https://. Type http:// and turn off Chrome's Always use secure connections.")
+                    }
+                    return
+                }
                 sock.soTimeout = 5000
-                val reader = BufferedReader(InputStreamReader(sock.getInputStream()))
-                // Browsers open spare connections that never send a request; ignore those quietly.
+                val reader = BufferedReader(InputStreamReader(input))
                 val requestLine = try {
                     reader.readLine()
                 } catch (e: SocketTimeoutException) {
                     null
                 } ?: return
-                while (true) {
-                    val header = reader.readLine() ?: break
-                    if (header.isEmpty()) break
+                try {
+                    while (true) {
+                        val header = reader.readLine() ?: break
+                        if (header.isEmpty()) break
+                    }
+                } catch (e: SocketTimeoutException) {
+                    // Headers never finished; answer anyway rather than dropping the connection.
                 }
                 SelfStats.count("lan_request")
                 val parts = requestLine.split(" ")

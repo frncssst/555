@@ -118,6 +118,10 @@ Re-test after installing 0.2: receive one MMS, send one text and one MMS from Go
 - **More readings per heartbeat:** battery charge, current, voltage, temperature and charge cycles; screen on or off, network type, signal level, Android's background rating for the app, memory use, and why Android last ended the app.
 - **Plug and unplug events** are logged as they happen.
 
+## Version 0.4.3 changes
+
+- **Web page reliability:** the test page waits up to 60 seconds for a browser to use a connection it opened early (it gave up after 5, which caused "connection closed" errors). If the browser tries a secure https:// connection, which this test page doesn't support, the log says so (`https_attempt`) instead of showing timeouts.
+
 ## Known unknowns this app is designed to expose
 
 - The answer and decline methods are deprecated. They may silently do nothing, return false, or throw on current Android when the app is not the default phone app. Every attempt is logged with its outcome either way.
